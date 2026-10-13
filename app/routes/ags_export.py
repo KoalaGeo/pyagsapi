@@ -45,10 +45,10 @@ def ags_export(bgs_loca_id: str = ags_export_query):
             status_code=422, detail=f"More than {BOREHOLE_EXPORT_LIMIT} borehole IDs."
         )
 
-    url = BOREHOLE_EXPORT_URL.format(bgs_loca_id=bgs_loca_id)
-
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            BOREHOLE_EXPORT_URL, params={"loca_ids": bgs_loca_id}, timeout=10
+        )
     except (Timeout, ConnectionError):
         raise HTTPException(
             status_code=500,
