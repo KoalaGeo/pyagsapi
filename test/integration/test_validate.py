@@ -448,3 +448,34 @@ async def test_validate_unknown_rules_json(async_client):
     assert response.status_code == 422
     body = response.json()
     assert body == UNKNOWN_RULES_RESPONSE
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_path_traversal_filename(async_client, tmp_path):
+    """A crafted upload filename must not be written outside the temp dir.
+
+    The filename is only used via its basename, so an absolute path or a
+    name containing '..' is neutralised (path traversal / arbitrary write).
+    """
+    # Arrange - a sentinel target that must NOT be created by the request
+    sentinel = tmp_path / 'pwned.ags'
+    assert not sentinel.exists()
+    source = TEST_FILE_DIR / 'example_ags.ags'
+    traversal_name = str(tmp_path / '..' / 'pwned.ags')
+    file = ('files', (traversal_name, open(source, 'rb'), 'text/plain'))
+    fields = [file, ('checkers', 'ags'), ('fmt', 'json')]
+    mp_encoder = MultipartEncoder(fields=fields)
+
+    # Act
+    async with async_client as ac:
+        response = await ac.post(
+            f'{API_VERSION}/validate/',
+            headers={'Content-Type': mp_encoder.content_type},
+            data=mp_encoder.to_string())
+
+    # Assert - request still succeeds, filename is reduced to its basename,
+    # and nothing was written to the traversal target
+    assert response.status_code == 200
+    body = response.json()
+    assert body['data'][0]['filename'] == 'pwned.ags'
+    assert not (tmp_path / '..' / 'pwned.ags').exists()
