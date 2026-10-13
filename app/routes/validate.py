@@ -20,7 +20,13 @@ from app.model.queries import (
     validation_file,
 )
 from .errors import InvalidPayloadError
-from .utils import AGS_API_VERSION, checker_functions, get_request_url, log_responses
+from .utils import (
+    AGS_API_VERSION,
+    check_zip_size,
+    checker_functions,
+    get_request_url,
+    log_responses,
+)
 
 router = APIRouter()
 
@@ -87,6 +93,7 @@ async def validate(
         # Extract zipped files if a zip is uploaded
         if is_zipfile(BytesIO(contents)):
             zipfile = ZipFile(BytesIO(contents))
+            check_zip_size(zipfile, request)
             for name in zipfile.namelist():
                 zipfile.extract(name, tmp_dir)
                 local_ags_file = tmp_dir / name

@@ -1,5 +1,7 @@
 import os
 
+from fastapi import HTTPException, status
+
 from app.model.schema import Checker
 from app.checkers import check_ags, check_bgs
 from app.version import API_VERSION
@@ -9,6 +11,11 @@ from .errors import error_responses
 AGS_API_ENV = os.getenv("AGS_API_ENV", "DEVELOP").upper()
 
 AGS_API_VERSION = f"/v{API_VERSION.split('.')[0]}"
+
+# Maximum accepted request/upload size, and the maximum total uncompressed
+# size extracted from an uploaded ZIP, to protect against memory exhaustion
+# and zip-bomb denial-of-service.
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
 
 BOREHOLE_EXPORT_LIMIT = 50
 BOREHOLE_VIEWER_URL = "https://gwbv.bgs.ac.uk/GWBV/viewborehole?loca_id={bgs_loca_id}"
@@ -50,6 +57,27 @@ checker_functions = {
     Checker.ags: check_ags,
     Checker.bgs: check_bgs,
 }
+
+
+def check_zip_size(zipfile, request):
+    """Reject an uploaded ZIP whose total uncompressed size is too large.
+
+    Guards against zip-bomb denial-of-service, where a small upload expands
+    to a very large amount of data on disk / in memory.
+    """
+    total_uncompressed = sum(info.file_size for info in zipfile.infolist())
+    if total_uncompressed > MAX_UPLOAD_SIZE:
+        limit_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "msg": "Payload too large",
+                "error": "Payload too large",
+                "desc": (
+                    f"Uncompressed ZIP contents must be {limit_mb} MB or smaller"
+                ),
+            },
+        )
 
 
 def get_request_url(request):
