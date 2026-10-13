@@ -7,6 +7,7 @@ from typing import List
 from zipfile import is_zipfile, ZipFile
 
 from fastapi import APIRouter, BackgroundTasks, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from app import validation
@@ -90,7 +91,10 @@ async def validate(
             for name in zipfile.namelist():
                 zipfile.extract(name, tmp_dir)
                 local_ags_file = tmp_dir / name
-                result = validate_file(
+                # Offload CPU/IO-bound validation to a worker thread so it
+                # does not block the event loop and stall other requests.
+                result = await run_in_threadpool(
+                    validate_file,
                     local_ags_file,
                     checkers=checkers,
                     dictionary=dictionary,
@@ -100,7 +104,8 @@ async def validate(
         else:
             local_ags_file = tmp_dir / file.filename
             local_ags_file.write_bytes(contents)
-            result = validate_file(
+            result = await run_in_threadpool(
+                validate_file,
                 local_ags_file,
                 checkers=checkers,
                 dictionary=dictionary,

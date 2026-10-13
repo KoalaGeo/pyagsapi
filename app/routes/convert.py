@@ -7,6 +7,7 @@ from typing import List
 from zipfile import is_zipfile, ZipFile
 
 from fastapi import APIRouter, BackgroundTasks, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from app import conversion, validation
@@ -74,8 +75,13 @@ async def convert(
                 for name in zipfile.namelist():
                     zipfile.extract(name, tmp_dir)
                     local_file = tmp_dir / name
-                    _, result = conversion.convert(
-                        local_file, results_dir, sorting_strategy=sort_tables
+                    # Offload CPU/IO-bound conversion to a worker thread so it
+                    # does not block the event loop and stall other requests.
+                    _, result = await run_in_threadpool(
+                        conversion.convert,
+                        local_file,
+                        results_dir,
+                        sorting_strategy=sort_tables,
                     )
                     log = validation.to_plain_text(result)
                     f.write(log)
@@ -83,14 +89,17 @@ async def convert(
             else:
                 local_file = tmp_dir / file.filename
                 local_file.write_bytes(contents)
-                _, result = conversion.convert(
-                    local_file, results_dir, sorting_strategy=sort_tables
+                _, result = await run_in_threadpool(
+                    conversion.convert,
+                    local_file,
+                    results_dir,
+                    sorting_strategy=sort_tables,
                 )
                 log = validation.to_plain_text(result)
                 f.write(log)
                 f.write("\n" + "=" * 80 + "\n")
     zipped_file = tmp_dir / RESULTS
-    shutil.make_archive(zipped_file, "zip", results_dir)
+    await run_in_threadpool(shutil.make_archive, zipped_file, "zip", results_dir)
     zipped_stream = open(tmp_dir / (RESULTS + ".zip"), "rb")
 
     background_tasks.add_task(zipped_stream.close)
