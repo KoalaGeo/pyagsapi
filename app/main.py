@@ -86,11 +86,15 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def landing_page(request: Request):
+    # Prefix API paths with the root path so the HTML forms post to the
+    # correct URL when the app is served behind a proxy sub-path
+    # (PYAGSAPI_ROOT_PATH).  Defaults to "" when no root path is set.
+    root_path = request.scope.get("root_path", "").rstrip("/")
     return templates.TemplateResponse(
         "landing_page.html",
         {
             "request": request,
-            "api_version_path": AGS_API_VERSION,
+            "api_version_path": f"{root_path}{AGS_API_VERSION}",
             "api_version": f'v{API_VERSION}',
             "agslib_version": f'v{metadata.version("python-ags4")}',
         },
@@ -98,18 +102,20 @@ async def landing_page(request: Request):
 
 
 @app.get("/docs", include_in_schema=False)
-def overridden_swagger():
+def overridden_swagger(request: Request):
+    root_path = request.scope.get("root_path", "").rstrip("/")
     return get_swagger_ui_html(
-        openapi_url="/openapi.json",
+        openapi_url=f"{root_path}/openapi.json",
         title="AGS4 File Utilities Tool",
         swagger_favicon_url="//resources.bgs.ac.uk/webapps/resources/images/logos/cropped-BGS-favicon-logo-32x32.png",
     )
 
 
 @app.get("/redoc", include_in_schema=False)
-def overridden_redoc():
+def overridden_redoc(request: Request):
+    root_path = request.scope.get("root_path", "").rstrip("/")
     return get_redoc_html(
-        openapi_url="/openapi.json",
+        openapi_url=f"{root_path}/openapi.json",
         title="AGS4 File Utilities Tool",
         redoc_favicon_url="//resources.bgs.ac.uk/webapps/resources/images/logos/cropped-BGS-favicon-logo-32x32.png",
     )
