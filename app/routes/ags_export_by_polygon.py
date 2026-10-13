@@ -15,7 +15,6 @@ from .utils import (
     ags_export_responses,
     BOREHOLE_INDEX_URL,
     BOREHOLE_EXPORT_LIMIT,
-    BOREHOLE_EXPORT_URL,
     AGS_API_VERSION,
 )
 
@@ -67,10 +66,15 @@ def ags_export_by_polygon(
     except shapely.errors.GEOSException:
         raise HTTPException(status_code=422, detail="Invalid polygon")
 
-    url = BOREHOLE_INDEX_URL.format(polygon=polygon, borehole_export_limit=BOREHOLE_EXPORT_LIMIT)
+    index_params = {
+        "f": "json",
+        "properties": "bgs_loca_id",
+        "filter": f"INTERSECTS(shape,{polygon})",
+        "limit": BOREHOLE_EXPORT_LIMIT,
+    }
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(BOREHOLE_INDEX_URL, params=index_params, timeout=10)
     except (Timeout, ConnectionError):
         raise HTTPException(
             status_code=500,
@@ -108,7 +112,6 @@ def ags_export_by_polygon(
             )
 
         bgs_loca_ids = ";".join([f["id"] for f in collection["features"]])
-        url = BOREHOLE_EXPORT_URL.format(bgs_loca_id=bgs_loca_ids)
         response = ags_export(bgs_loca_ids)
 
     return response

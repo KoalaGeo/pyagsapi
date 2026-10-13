@@ -40,10 +40,10 @@ def get_ags_log(
     :raises HTTPException 500: If the borehole generator could not be reached.
     """
 
-    url = BOREHOLE_VIEWER_URL.format(bgs_loca_id=bgs_loca_id)
-
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            BOREHOLE_VIEWER_URL, params={"loca_id": bgs_loca_id}, timeout=10
+        )
     except (Timeout, ConnectionError):
         raise HTTPException(
             status_code=500,

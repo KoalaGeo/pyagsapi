@@ -11,12 +11,13 @@ AGS_API_ENV = os.getenv("AGS_API_ENV", "DEVELOP").upper()
 AGS_API_VERSION = f"/v{API_VERSION.split('.')[0]}"
 
 BOREHOLE_EXPORT_LIMIT = 50
-BOREHOLE_VIEWER_URL = "https://gwbv.bgs.ac.uk/GWBV/viewborehole?loca_id={bgs_loca_id}"
-BOREHOLE_EXPORT_URL = "https://gwbv.bgs.ac.uk/ags_export?loca_ids={bgs_loca_id}"
-BOREHOLE_INDEX_URL = (
-    "https://ogcapi.bgs.ac.uk/collections/agsboreholeindex/items?f=json"
-    "&properties=bgs_loca_id&filter=INTERSECTS(shape,{polygon})&limit={borehole_export_limit}"
-)
+# Base URLs for upstream NGDC services.  User-supplied values (borehole IDs,
+# polygon WKT) are passed as request parameters via ``requests``, which
+# percent-encodes them, rather than being interpolated into these strings.
+# This prevents HTTP parameter injection into the upstream request.
+BOREHOLE_VIEWER_URL = "https://gwbv.bgs.ac.uk/GWBV/viewborehole"
+BOREHOLE_EXPORT_URL = "https://gwbv.bgs.ac.uk/ags_export"
+BOREHOLE_INDEX_URL = "https://ogcapi.bgs.ac.uk/collections/agsboreholeindex/items"
 
 log_responses = dict(error_responses)
 log_responses["200"] = {
