@@ -13,7 +13,7 @@ from app import conversion, validation
 from app.model.schema import SortingStrategy
 from app.model.queries import sort_tables_form, conversion_file
 from .errors import InvalidPayloadError
-from .utils import AGS_API_VERSION, zip_responses
+from .utils import AGS_API_VERSION, check_zip_size, zip_responses
 
 router = APIRouter()
 
@@ -71,6 +71,7 @@ async def convert(
                 ".xlsx"
             ):
                 zipfile = ZipFile(content_bytes)
+                check_zip_size(zipfile, request)
                 for name in zipfile.namelist():
                     zipfile.extract(name, tmp_dir)
                     local_file = tmp_dir / name

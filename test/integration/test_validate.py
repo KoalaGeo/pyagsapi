@@ -448,3 +448,40 @@ async def test_validate_unknown_rules_json(async_client):
     assert response.status_code == 422
     body = response.json()
     assert body == UNKNOWN_RULES_RESPONSE
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_oversized_upload(async_client, monkeypatch):
+    """A request body larger than the configured limit is rejected with 413."""
+    import app.main as main_module
+    monkeypatch.setattr(main_module, 'MAX_UPLOAD_SIZE', 10)
+    filename = TEST_FILE_DIR / 'example_ags.ags'
+    file = ('files', (filename.name, open(filename, 'rb'), 'text/plain'))
+    mp_encoder = MultipartEncoder(fields=[file, ('checkers', 'ags'), ('fmt', 'json')])
+
+    async with async_client as ac:
+        response = await ac.post(
+            f'{API_VERSION}/validate/',
+            headers={'Content-Type': mp_encoder.content_type},
+            data=mp_encoder.to_string())
+
+    assert response.status_code == 413
+    assert response.json()['errors'][0]['error'] == 'Payload too large'
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_zip_bomb(async_client, monkeypatch):
+    """A ZIP whose uncompressed contents exceed the limit is rejected with 413."""
+    import app.routes.utils as utils_module
+    monkeypatch.setattr(utils_module, 'MAX_UPLOAD_SIZE', 10)
+    filename = TEST_FILE_DIR / 'one_good_ags.zip'
+    file = ('files', (filename.name, open(filename, 'rb'), 'application/zip'))
+    mp_encoder = MultipartEncoder(fields=[file, ('checkers', 'ags'), ('fmt', 'json')])
+
+    async with async_client as ac:
+        response = await ac.post(
+            f'{API_VERSION}/validate/',
+            headers={'Content-Type': mp_encoder.content_type},
+            data=mp_encoder.to_string())
+
+    assert response.status_code == 413

@@ -19,7 +19,7 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 
 from app.routes import validate, convert, ags_log, ags_export, ags_export_by_polygon
 from app.routes.errors import HTTPExceptionResponse, InvalidPayloadError
-from app.routes.utils import AGS_API_VERSION
+from app.routes.utils import AGS_API_VERSION, MAX_UPLOAD_SIZE
 from app.version import API_VERSION
 
 
@@ -172,6 +172,39 @@ async def log_requests(request: Request, call_next):
         logger.debug(f"Request: id: {req_id} response headers: {response.headers}")
 
     return response
+
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Reject requests whose body exceeds MAX_UPLOAD_SIZE.
+
+    This guards against memory exhaustion from very large uploads before the
+    body is read.  It relies on the Content-Length header; the per-request
+    ZIP extraction guard in the routes covers zip-bomb expansion.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            too_large = int(content_length) > MAX_UPLOAD_SIZE
+        except ValueError:
+            too_large = False
+        if too_large:
+            limit_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={
+                    "msg": "Payload too large",
+                    "type": "bad request",
+                    "self": str(request.url),
+                    "errors": [
+                        {
+                            "error": "Payload too large",
+                            "desc": f"Uploads must be {limit_mb} MB or smaller",
+                        }
+                    ],
+                },
+            )
+    return await call_next(request)
 
 
 # Override HTTPException
