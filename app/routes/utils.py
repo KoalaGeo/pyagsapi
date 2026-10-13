@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from app.model.schema import Checker
 from app.checkers import check_ags, check_bgs
@@ -50,6 +51,25 @@ checker_functions = {
     Checker.ags: check_ags,
     Checker.bgs: check_bgs,
 }
+
+
+def safe_filename(filename: str) -> str:
+    """Return a safe basename for an untrusted uploaded or zipped filename.
+
+    Only the final path component is kept, so an absolute path or a name
+    containing ``..`` cannot be used to write outside the intended directory
+    (path traversal / arbitrary file write).  Returns an empty string for
+    names that are empty or resolve to a directory reference such as ``.``,
+    ``..`` or ``folder/``.
+    """
+    raw = str(filename)
+    if raw.endswith("/") or raw.endswith(os.sep):
+        # Directory entry (e.g. a folder inside a zip), not a file
+        return ""
+    name = Path(raw).name
+    if name in ("", ".", ".."):
+        return ""
+    return name
 
 
 def get_request_url(request):

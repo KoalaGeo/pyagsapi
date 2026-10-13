@@ -20,7 +20,13 @@ from app.model.queries import (
     validation_file,
 )
 from .errors import InvalidPayloadError
-from .utils import AGS_API_VERSION, checker_functions, get_request_url, log_responses
+from .utils import (
+    AGS_API_VERSION,
+    checker_functions,
+    get_request_url,
+    log_responses,
+    safe_filename,
+)
 
 router = APIRouter()
 
@@ -88,8 +94,14 @@ async def validate(
         if is_zipfile(BytesIO(contents)):
             zipfile = ZipFile(BytesIO(contents))
             for name in zipfile.namelist():
-                zipfile.extract(name, tmp_dir)
-                local_ags_file = tmp_dir / name
+                # Use only the basename so a crafted archive entry cannot be
+                # written outside the temporary directory (path traversal).
+                safe_name = safe_filename(name)
+                if not safe_name or name.startswith("__MACOSX"):
+                    # Skip directory entries and macOS resource-fork metadata
+                    continue
+                local_ags_file = tmp_dir / safe_name
+                local_ags_file.write_bytes(zipfile.read(name))
                 result = validate_file(
                     local_ags_file,
                     checkers=checkers,
@@ -98,7 +110,10 @@ async def validate(
                 )
                 data.append(result)
         else:
-            local_ags_file = tmp_dir / file.filename
+            safe_name = safe_filename(file.filename)
+            if not safe_name:
+                raise InvalidPayloadError(request)
+            local_ags_file = tmp_dir / safe_name
             local_ags_file.write_bytes(contents)
             result = validate_file(
                 local_ags_file,
