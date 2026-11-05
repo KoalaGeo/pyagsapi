@@ -1,5 +1,8 @@
 import os
+import unicodedata
 from pathlib import Path
+
+from fastapi import HTTPException, status
 
 from app.model.schema import Checker
 from app.checkers import check_ags, check_bgs
@@ -53,14 +56,20 @@ checker_functions = {
 }
 
 
+# Longest single path component most filesystems accept, in bytes
+MAX_FILENAME_BYTES = 255
+
+
 def safe_filename(filename: str) -> str:
     """Return a safe basename for an untrusted uploaded or zipped filename.
 
-    Only the final path component is kept, so an absolute path or a name
-    containing ``..`` cannot be used to write outside the intended directory
-    (path traversal / arbitrary file write).  Returns an empty string for
-    names that are empty or resolve to a directory reference such as ``.``,
-    ``..`` or ``folder/``.
+    The filename is client-controlled.  Only the final path component is kept,
+    so an absolute path or a name containing ``..`` cannot be used to write
+    outside the intended directory (path traversal / arbitrary file write).
+    Returns an empty string for names that cannot be used safely: empty,
+    ``.``, ``..``, a directory entry such as ``folder/``, a name containing
+    control characters (e.g. NUL or newline) or one longer than
+    MAX_FILENAME_BYTES.
     """
     raw = str(filename)
     if raw.endswith("/") or raw.endswith(os.sep):
@@ -69,7 +78,39 @@ def safe_filename(filename: str) -> str:
     name = Path(raw).name
     if name in ("", ".", ".."):
         return ""
+    if any(unicodedata.category(char) == "Cc" for char in name):
+        return ""
+    if len(name.encode("utf-8", errors="replace")) > MAX_FILENAME_BYTES:
+        return ""
     return name
+
+
+def contained_path(directory: Path, name: str) -> Path:
+    """Return directory / name, refusing any path that is not directly inside directory.
+
+    safe_filename() already guarantees this; the check makes the guarantee
+    explicit so that a future change cannot silently reintroduce a write
+    outside the per-request temporary directory.
+    """
+    path = directory / name
+    if path.resolve().parent != directory.resolve():
+        raise ValueError(f"Refusing to write {name!r} outside {directory}")
+    return path
+
+
+def invalid_filename_error() -> HTTPException:
+    """422 response for an uploaded file whose name cannot be used safely."""
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={
+            "msg": "Invalid filename",
+            "error": "Invalid filename",
+            "desc": (
+                "Uploaded filenames must not be empty, a directory, contain "
+                f"control characters or be longer than {MAX_FILENAME_BYTES} bytes"
+            ),
+        },
+    )
 
 
 def get_request_url(request):

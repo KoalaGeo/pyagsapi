@@ -23,7 +23,9 @@ from .errors import InvalidPayloadError
 from .utils import (
     AGS_API_VERSION,
     checker_functions,
+    contained_path,
     get_request_url,
+    invalid_filename_error,
     log_responses,
     safe_filename,
 )
@@ -100,7 +102,7 @@ async def validate(
                 if not safe_name or name.startswith("__MACOSX"):
                     # Skip directory entries and macOS resource-fork metadata
                     continue
-                local_ags_file = tmp_dir / safe_name
+                local_ags_file = contained_path(tmp_dir, safe_name)
                 local_ags_file.write_bytes(zipfile.read(name))
                 result = validate_file(
                     local_ags_file,
@@ -110,10 +112,13 @@ async def validate(
                 )
                 data.append(result)
         else:
+            # The client-supplied filename is only used for its basename, which
+            # sets the file type and is reported back in the results; it is
+            # never used as a path.
             safe_name = safe_filename(file.filename)
             if not safe_name:
-                raise InvalidPayloadError(request)
-            local_ags_file = tmp_dir / safe_name
+                raise invalid_filename_error()
+            local_ags_file = contained_path(tmp_dir, safe_name)
             local_ags_file.write_bytes(contents)
             result = validate_file(
                 local_ags_file,
