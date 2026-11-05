@@ -13,7 +13,13 @@ from app import conversion, validation
 from app.model.schema import SortingStrategy
 from app.model.queries import sort_tables_form, conversion_file
 from .errors import InvalidPayloadError
-from .utils import AGS_API_VERSION, zip_responses
+from .utils import (
+    AGS_API_VERSION,
+    contained_path,
+    invalid_filename_error,
+    safe_filename,
+    zip_responses,
+)
 
 router = APIRouter()
 
@@ -72,8 +78,15 @@ async def convert(
             ):
                 zipfile = ZipFile(content_bytes)
                 for name in zipfile.namelist():
-                    zipfile.extract(name, tmp_dir)
-                    local_file = tmp_dir / name
+                    # Use only the basename so a crafted archive entry cannot
+                    # be written outside the temporary directory (path
+                    # traversal).
+                    safe_name = safe_filename(name)
+                    if not safe_name or name.startswith("__MACOSX"):
+                        # Skip directory entries and macOS metadata
+                        continue
+                    local_file = contained_path(tmp_dir, safe_name)
+                    local_file.write_bytes(zipfile.read(name))
                     _, result = conversion.convert(
                         local_file, results_dir, sorting_strategy=sort_tables
                     )
@@ -81,7 +94,13 @@ async def convert(
                     f.write(log)
                     f.write("\n" + "=" * 80 + "\n")
             else:
-                local_file = tmp_dir / file.filename
+                # The client-supplied filename is only used for its basename,
+                # which sets the conversion direction and output name; it is
+                # never used as a path.
+                safe_name = safe_filename(file.filename)
+                if not safe_name:
+                    raise invalid_filename_error()
+                local_file = contained_path(tmp_dir, safe_name)
                 local_file.write_bytes(contents)
                 _, result = conversion.convert(
                     local_file, results_dir, sorting_strategy=sort_tables

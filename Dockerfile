@@ -10,7 +10,10 @@ COPY ./requirements.txt /code/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
-COPY --chown=appuser:appgroup ./app /code/app
+# Application code stays owned by root and is read-only to appuser, so a bug
+# that lets a request write files cannot overwrite the app's code or templates.
+# The app only needs to write to the temp directory (/tmp).
+COPY ./app /code/app
 
 USER appuser
 
